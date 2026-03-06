@@ -113,3 +113,15 @@ variable "create_uptime_check" {
   type        = bool
   default     = false
 }
+
+variable "notification_emails" {                                                                                                                                                 
+  description = "Email addresses or groups to receive monitoring alerts"                                                                                                         
+  type        = list(string)                                                                                                                                                     
+  default     = ["alerts@noreva.ai"]
+}
+
+variable "log_retention_days" {
+  description = "Days to retain logs in GCS archive"
+  type        = number
+  default     = 90
+}

@@ -32,8 +32,9 @@ resource "google_compute_instance" "vm" {
   machine_type = var.machine_type
   zone         = var.zone
   project      = var.project_id
-
+  
   tags = var.tags
+  labels = var.labels
 
   boot_disk {
     initialize_params {
@@ -64,5 +65,9 @@ resource "google_compute_instance" "vm" {
 
   metadata = {
     enable-oslogin = "TRUE"
+  }
+
+  lifecycle {
+    ignore_changes = [boot_disk[0].initialize_params[0].image]
   }
 }

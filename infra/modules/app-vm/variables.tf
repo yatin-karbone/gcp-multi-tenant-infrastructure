@@ -74,3 +74,9 @@ variable "metadata_startup_script" {
   type        = string
   default     = ""
 }
+
+variable "labels" {
+  description = "Labels to apply to the VM instance"
+  type        = map(string)
+  default     = {}
+}
