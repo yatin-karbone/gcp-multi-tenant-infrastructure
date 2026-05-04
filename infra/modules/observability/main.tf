@@ -114,7 +114,7 @@ resource "google_monitoring_alert_policy" "error_logs" {
     display_name = "Application error logs detected"
 
     condition_matched_log {
-      filter = "logName=\"projects/${var.project_id}/logs/docker_containers\" jsonPayload.log=~\"(?i)(error|exception|traceback|critical)\""
+      filter = var.use_severity_filter ? "logName=\"projects/${var.project_id}/logs/docker_containers\" severity>=ERROR" : "logName=\"projects/${var.project_id}/logs/docker_containers\" jsonPayload.log=~\"(?i)(error|exception|traceback|critical)\""
     }
   }
 
@@ -129,6 +129,6 @@ resource "google_monitoring_alert_policy" "error_logs" {
   ]
 
   documentation {
-    content = "Application errors detected in ${var.company_name}-${var.environment}. Check Cloud Logging: logName=\"projects/${var.project_id}/logs/docker_containers\""
+    content = var.use_severity_filter ? "Application ERROR severity logs in ${var.company_name}-${var.environment}. Check Cloud Logging: logName=\"projects/${var.project_id}/logs/docker_containers\" severity>=ERROR" : "Application errors detected in ${var.company_name}-${var.environment}. Check Cloud Logging: logName=\"projects/${var.project_id}/logs/docker_containers\""
   }
 }

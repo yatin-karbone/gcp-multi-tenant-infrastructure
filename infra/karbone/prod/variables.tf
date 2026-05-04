@@ -11,36 +11,26 @@ variable "region" {
 
 variable "zone" {
   type        = string
-  default     = "us-east4-a"
+  default     = "us-east4-c"
   description = "GCP zone"
 }
 
 variable "environment" {
   type        = string
-  default     = "dev"
+  default     = "prod"
   description = "Environment name"
 }
 
-# Networking
-variable "app_subnet_cidr" {
+# Networking — prod creates its own VPC
+variable "vpc_cidr_range" {
   type        = string
-  description = "CIDR range for the Karbone app subnet"
+  description = "CIDR range for the prod VPC subnet"
 }
 
 variable "office_allowed_ips" {
   type        = list(string)
   default     = []
   description = "List of CIDRs allowed to access HTTPS (port 443). Used for office/dev access restriction."
-}
-
-variable "existing_vpc_name" {
-  type        = string
-  description = "Name of the existing VPC in this project"
-}
-
-variable "existing_router_name" {
-  type        = string
-  description = "Name of the existing Cloud Router"
 }
 
 # VM
@@ -65,7 +55,7 @@ variable "vm_boot_disk_type" {
 # Cloud SQL
 variable "db_tier" {
   type        = string
-  default     = "db-f1-micro"
+  default     = "db-g1-small"
   description = "Cloud SQL machine tier"
 }
 
@@ -91,6 +81,11 @@ variable "notification_emails" {
   type        = list(string)
   default     = []
   description = "Email addresses for alert notifications"
+}
+
+variable "log_retention_days" {
+  type    = number
+  default = 30
 }
 
 # GitHub Actions

@@ -1,20 +1,4 @@
 # -------------------------------------------------------
-# Data sources — reference existing resources from pnl-pipeline
-# -------------------------------------------------------
-
-data "google_compute_network" "vpc" {
-  name    = var.existing_vpc_name
-  project = var.project_id
-}
-
-data "google_compute_router" "router" {
-  name    = var.existing_router_name
-  network = data.google_compute_network.vpc.self_link
-  region  = var.region
-  project = var.project_id
-}
-
-# -------------------------------------------------------
 # Enable required APIs
 # -------------------------------------------------------
 
@@ -28,6 +12,9 @@ resource "google_project_service" "enabled_apis" {
     "servicenetworking.googleapis.com",
     "artifactregistry.googleapis.com",
     "sts.googleapis.com",
+    "monitoring.googleapis.com",
+    "logging.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
     "iap.googleapis.com",
   ])
 
@@ -37,15 +24,19 @@ resource "google_project_service" "enabled_apis" {
 }
 
 # -------------------------------------------------------
-# Subnet for Karbone app
+# VPC (prod creates its own)
 # -------------------------------------------------------
 
-resource "google_compute_subnetwork" "karbone_app_subnet" {
-  name                     = "karbone-app-subnet"
-  ip_cidr_range            = var.app_subnet_cidr
-  region                   = var.region
-  network                  = data.google_compute_network.vpc.id
-  private_ip_google_access = true
+module "karbone_vpc" {
+  source = "../../modules/vpc-network"
+
+  project_id   = var.project_id
+  region       = var.region
+  company_name = "karbone"
+  environment  = var.environment
+  cidr_range   = var.vpc_cidr_range
+
+  depends_on = [google_project_service.enabled_apis]
 }
 
 # -------------------------------------------------------
@@ -54,7 +45,7 @@ resource "google_compute_subnetwork" "karbone_app_subnet" {
 
 resource "google_compute_firewall" "allow_http" {
   name    = "karbone-app-allow-http"
-  network = data.google_compute_network.vpc.name
+  network = module.karbone_vpc.network_name
   project = var.project_id
 
   allow {
@@ -68,7 +59,7 @@ resource "google_compute_firewall" "allow_http" {
 
 resource "google_compute_firewall" "allow_https" {
   name    = "karbone-app-allow-https"
-  network = data.google_compute_network.vpc.name
+  network = module.karbone_vpc.network_name
   project = var.project_id
 
   allow {
@@ -82,7 +73,7 @@ resource "google_compute_firewall" "allow_https" {
 
 resource "google_compute_firewall" "allow_iap_ssh" {
   name    = "karbone-app-allow-iap-ssh"
-  network = data.google_compute_network.vpc.name
+  network = module.karbone_vpc.network_name
   project = var.project_id
 
   allow {
@@ -96,7 +87,7 @@ resource "google_compute_firewall" "allow_iap_ssh" {
 
 resource "google_compute_firewall" "allow_internal" {
   name    = "karbone-app-allow-internal"
-  network = data.google_compute_network.vpc.name
+  network = module.karbone_vpc.network_name
   project = var.project_id
 
   allow {
@@ -124,10 +115,10 @@ module "karbone_nat" {
 
   project_id        = var.project_id
   region            = var.region
-  router_name       = data.google_compute_router.router.name
+  router_name       = module.karbone_vpc.router_name
   nat_name          = "karbone-app-nat"
   static_ip_name    = "karbone-app-nat-ip"
-  subnet_self_links = [google_compute_subnetwork.karbone_app_subnet.self_link]
+  subnet_self_links = [module.karbone_vpc.subnetwork_self_link]
 }
 
 # -------------------------------------------------------
@@ -137,19 +128,54 @@ module "karbone_nat" {
 module "karbone_vm" {
   source = "../../modules/app-vm"
 
-  project_id        = var.project_id
-  region            = var.region
-  zone              = var.zone
-  company_name      = "karbone"
-  environment       = var.environment
-  network_id        = data.google_compute_network.vpc.self_link
-  subnetwork_id     = google_compute_subnetwork.karbone_app_subnet.self_link
-  machine_type      = var.vm_machine_type
-  boot_disk_size_gb = var.vm_boot_disk_size_gb
-  boot_disk_type    = var.vm_boot_disk_type
+  project_id         = var.project_id
+  region             = var.region
+  zone               = var.zone
+  company_name       = "karbone"
+  environment        = var.environment
+  network_id         = module.karbone_vpc.network_self_link
+  subnetwork_id      = module.karbone_vpc.subnetwork_self_link
+  machine_type       = var.vm_machine_type
+  boot_disk_size_gb  = var.vm_boot_disk_size_gb
+  boot_disk_type     = var.vm_boot_disk_type
   enable_external_ip = true
-  tags              = ["karbone-app"]
-  labels            = var.labels
+  tags               = ["karbone-app"]
+  labels             = var.labels
+
+  metadata_startup_script = <<-EOF
+    #!/bin/bash
+    # Configure Ops Agent to collect Docker container logs with severity promotion
+    cat > /etc/google-cloud-ops-agent/config.yaml << 'OPS_AGENT_CONFIG'
+    logging:
+      receivers:
+        docker_containers:
+          type: files
+          include_paths:
+            - /var/lib/docker/containers/*/*.log
+          record_log_file_path: true
+      processors:
+        parse_docker_json:
+          type: parse_json
+          field: message
+          time_key: time
+          time_format: "%Y-%m-%dT%H:%M:%S.%fZ"
+        parse_app_json:
+          type: parse_json
+          field: log
+        set_severity:
+          type: modify_fields
+          fields:
+            severity:
+              move_from: jsonPayload.severity
+      service:
+        pipelines:
+          docker_pipeline:
+            receivers: [docker_containers]
+            processors: [parse_docker_json, parse_app_json, set_severity]
+            exporters: [google_cloud_logging]
+    OPS_AGENT_CONFIG
+    systemctl restart google-cloud-ops-agent
+  EOF
 }
 
 # -------------------------------------------------------
@@ -225,17 +251,17 @@ module "karbone_db" {
 
   project_id          = var.project_id
   region              = var.region
-  vpc_id              = data.google_compute_network.vpc.self_link
-  instance_name       = "karbone-dev-db"
+  vpc_id              = module.karbone_vpc.network_self_link
+  instance_name       = "karbone-prod-db"
   tier                = var.db_tier
   database_name       = "karbone"
   user_name           = "karbone_app"
   user_password       = var.db_password
   backup_enabled      = true
   pitr_enabled        = true
-  deletion_protection = false
+  deletion_protection = true
   availability_type   = "ZONAL"
-  disk_size_gb        = 10
+  disk_size_gb        = 20
   labels              = var.labels
 
   depends_on = [google_project_service.enabled_apis]
@@ -381,4 +407,46 @@ resource "google_service_account_iam_member" "karbone_sa_act_as_self" {
   service_account_id = "projects/${var.project_id}/serviceAccounts/${module.karbone_vm.service_account_email}"
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${module.karbone_vm.service_account_email}"
+}
+
+# -------------------------------------------------------
+# Observability (monitoring from day 1)
+# -------------------------------------------------------
+
+module "observability" {
+  source = "../../modules/observability"
+
+  project_id           = var.project_id
+  region               = var.region
+  company_name         = "karbone"
+  environment          = var.environment
+  notification_emails  = var.notification_emails
+  disk_alert_threshold = 80
+  log_retention_days   = var.log_retention_days
+  enable_error_alerts  = true
+  use_severity_filter  = true
+}
+
+
+resource "google_monitoring_alert_policy" "cpu_usage" {
+  display_name = "karbone-prod-cpu-usage-high"
+  combiner     = "OR"
+  project      = var.project_id
+
+  conditions {
+    display_name = "CPU utilization above 90%"
+    condition_threshold {
+      filter          = "resource.type=\"gce_instance\" AND metric.type=\"compute.googleapis.com/instance/cpu/utilization\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0.9
+      duration        = "300s"
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_MEAN"
+      }
+    }
+  }
+
+  notification_channels = module.observability.notification_channel_ids
 }

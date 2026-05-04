@@ -68,6 +68,9 @@ resource "google_compute_instance" "vm" {
   }
 
   lifecycle {
-    ignore_changes = [boot_disk[0].initialize_params[0].image]
+    ignore_changes = [
+      boot_disk[0].initialize_params[0].image,
+      metadata_startup_script,
+    ]
   }
 }

@@ -45,5 +45,5 @@ output "artifact_registry_url" {
 
 output "wif_provider" {
   value       = google_iam_workload_identity_pool_provider.github.name
-  description = "WIF provider resource name — set as WIF_PROVIDER secret in GitHub Actions"
+  description = "WIF provider resource name — set as WIF_PROVIDER_PROD secret in GitHub Actions"
 }

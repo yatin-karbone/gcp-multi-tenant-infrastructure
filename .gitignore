@@ -8,6 +8,10 @@
 # Crash log files
 crash.log
 
+# Terraform plan files
+tfplan
+*.tfplan
+
 # Exclude sensitive Terraform variable files
 *.tfvars
 !example.tfvars

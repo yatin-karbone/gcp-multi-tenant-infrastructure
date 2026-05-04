@@ -40,3 +40,9 @@ variable "enable_error_alerts" {
   type        = bool
   default     = false
 }
+
+variable "use_severity_filter" {
+  description = "Use severity>=ERROR filter instead of pattern matching. Requires structured logging (google-cloud-logging) in the application."
+  type        = bool
+  default     = false
+}

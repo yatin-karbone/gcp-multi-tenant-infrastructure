@@ -1,11 +1,10 @@
-project_id = "karbone-dev-apps-c2a6"
-region     = "us-east4"
-zone       = "us-east4-c"
+project_id = "karbone-prod-apps-0f22"
 
-# Networking — reference existing resources from pnl-pipeline
-existing_vpc_name    = "karbone-dev-apps-vpc"
-existing_router_name = "pnl-router"
-app_subnet_cidr      = "10.0.2.0/24"
+region = "us-east4"
+zone   = "us-east4-c"
+
+# Networking — prod creates its own VPC
+vpc_cidr_range = "10.1.0.0/24"
 
 # Office IPs allowed to access HTTPS (port 443). Port 80 stays open for ACME challenges.
 office_allowed_ips = [
@@ -19,7 +18,7 @@ vm_boot_disk_size_gb = 100
 vm_boot_disk_type    = "pd-balanced"
 
 # Cloud SQL
-db_tier = "db-f1-micro"
+db_tier = "db-g1-small"
 # db_password — set via TF_VAR_db_password env var or -var flag, never commit
 
 # GitHub Actions — WIF scope (owner/repo)
@@ -27,16 +26,17 @@ github_repo = "Karbone-org/karbone-trade-capture"
 
 # IAM
 infra_admins_group_email            = "infra-admins@karbone.com"
-external_developers_group_email     = "karbone-dev-external@karbone.com"
+external_developers_group_email     = "karbone-prod-external@karbone.com"
 
 # Observability
-notification_emails = ["alerts-dev@karbone.com"]
+notification_emails = ["karbone-alerts-prod@karbone.com"]
+log_retention_days  = 30
 
 # Labels
 labels = {
   team         = "karbone-engineering"
   application  = "karbone-hub"
-  environment  = "dev"
+  environment  = "prod"
   company_name = "karbone"
   purpose      = "energy-trading-platform"
   managed_by   = "terraform"
